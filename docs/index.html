@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aad-greeks — adjoint differentiation, measured</title>
+<meta name="description" content="Adjoint automatic differentiation for option Greeks: cost scaling, machine-precision accuracy, and the payoff where it silently returns zero.">
+<style>
+:root{
+  --bg:#050814; --panel:#0a1020; --panel2:#0d1628; --line:#20314d;
+  --text:#f4f8ff; --muted:#8da2bf; --cyan:#4de7ff; --blue:#4f8cff;
+  --violet:#9b7bff; --amber:#ffcb66; --green:#68f5ae; --red:#ff647c;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: light){
+  :root{--bg:#f7fbff;--panel:#fff;--panel2:#eef5ff;--line:#c4d5ea;
+        --text:#0b1730;--muted:#526a88;--cyan:#007d9d;--blue:#145fe0;
+        --violet:#7048d7;--amber:#9b6400;--green:#087a4c;--red:#c83755;}
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+     line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+a{color:var(--cyan)}
+
+/* ── hero ─────────────────────────────────────────────────────────── */
+header{position:relative;overflow:hidden;border-bottom:1px solid var(--line);
+       background:linear-gradient(180deg,var(--panel2),var(--panel))}
+header .wrap{padding:64px 20px 52px;position:relative;z-index:2}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.18em;
+         color:var(--muted);text-transform:uppercase}
+h1{font-size:clamp(30px,5.2vw,50px);line-height:1.08;margin:14px 0 6px;
+   letter-spacing:-.02em}
+.sub{color:var(--muted);font-size:17px;max-width:60ch;margin:0 0 26px}
+.pills{display:flex;gap:10px;flex-wrap:wrap}
+.pill{font-family:var(--mono);font-size:12px;padding:6px 12px;border-radius:999px;
+      border:1px solid var(--line);background:var(--panel);color:var(--muted)}
+.pill b{color:var(--text)}
+#grid-bg{position:absolute;inset:0;z-index:1;opacity:.5}
+
+/* ── layout ───────────────────────────────────────────────────────── */
+section{padding:56px 0;border-bottom:1px solid var(--line)}
+h2{font-size:clamp(21px,3vw,29px);margin:0 0 6px;letter-spacing:-.01em}
+.lede{color:var(--muted);max-width:70ch;margin:0 0 26px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+      padding:22px}
+.grid2{display:grid;gap:20px;grid-template-columns:1fr}
+@media(min-width:840px){.grid2{grid-template-columns:1.35fr .9fr}}
+
+/* ── controls ─────────────────────────────────────────────────────── */
+.ctl{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+.ctl label{font-family:var(--mono);font-size:12.5px;color:var(--muted);
+           min-width:120px}
+input[type=range]{flex:1;min-width:180px;accent-color:var(--cyan);height:22px}
+.val{font-family:var(--mono);font-size:14px;color:var(--cyan);font-weight:700;
+     min-width:92px;text-align:right}
+button{font-family:var(--mono);font-size:12.5px;padding:8px 14px;border-radius:8px;
+       border:1px solid var(--line);background:var(--panel2);color:var(--text);
+       cursor:pointer;transition:border-color .18s,transform .12s}
+button:hover{border-color:var(--cyan)}
+button:active{transform:translateY(1px)}
+button[aria-pressed=true]{border-color:var(--cyan);color:var(--cyan)}
+
+/* ── readouts ─────────────────────────────────────────────────────── */
+.stat{font-family:var(--mono)}
+.stat .k{font-size:11.5px;color:var(--muted);text-transform:uppercase;
+         letter-spacing:.1em}
+.stat .v{font-size:26px;font-weight:700;line-height:1.25;
+         font-variant-numeric:tabular-nums}
+.stat+.stat{margin-top:18px}
+.good{color:var(--green)} .bad{color:var(--red)} .mid{color:var(--amber)}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:500;font-size:11.5px;text-transform:uppercase;
+   letter-spacing:.08em}
+tbody tr:hover{background:var(--panel2)}
+td.num{font-variant-numeric:tabular-nums}
+svg{display:block;width:100%;height:auto;overflow:visible}
+.note{font-size:13.5px;color:var(--muted);margin-top:16px;max-width:74ch}
+.warn{border-left:3px solid var(--red);padding-left:16px;margin-top:20px}
+footer{padding:44px 0 64px;color:var(--muted);font-size:14px}
+/* Sections are visible by default. The hidden state is only applied once JS
+   has confirmed it can also remove it — otherwise a failed observer, a blocked
+   script or a stalled renderer leaves the page permanently blank. Same reason
+   the SVG panels animate backwards out of hidden rather than into visible. */
+.reveal{transition:opacity .6s ease-out,transform .6s ease-out}
+.js .reveal{opacity:0;transform:translateY(14px)}
+.js .reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){
+  html{scroll-behavior:auto}
+  .reveal,.js .reveal{opacity:1;transform:none;transition:none}
+  #grid-bg{display:none}
+  *{animation:none!important}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <svg id="grid-bg" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs>
+      <pattern id="g" width="42" height="42" patternUnits="userSpaceOnUse">
+        <path d="M42 0H0V42" fill="none" stroke="var(--line)" stroke-width=".7"/>
+      </pattern>
+      <radialGradient id="fade"><stop offset="0" stop-color="#fff" stop-opacity=".85"/>
+        <stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+      <mask id="m"><rect width="1200" height="420" fill="url(#fade)"/></mask>
+    </defs>
+    <rect width="1200" height="420" fill="url(#g)" mask="url(#m)"/>
+    <g mask="url(#m)" fill="none" stroke="var(--cyan)" stroke-width="1.4" opacity=".65">
+      <path id="tapepath" d="M60 340 L200 340 L260 250 L400 250 L460 170 L640 170 L700 260 L900 260 L960 120 L1140 120"/>
+    </g>
+  </svg>
+  <div class="wrap">
+    <div class="eyebrow">asp53826 / aad-greeks</div>
+    <h1>One reverse sweep,<br>every Greek.</h1>
+    <p class="sub">Adjoint automatic differentiation costs a constant multiple of the
+      price no matter how many inputs you have. This page lets you check that —
+      and the case where it returns a derivative of exactly zero and is wrong.</p>
+    <div class="pills">
+      <span class="pill">19 <b>tests</b></span>
+      <span class="pill">accuracy <b>5.6e-16</b></span>
+      <span class="pill">cost <b>1.7–2.4&times;</b> price</span>
+      <span class="pill">vs bumping <b>49&times;</b> at n=50</span>
+      <span class="pill"><a href="https://github.com/asp53826/aad-greeks">source</a></span>
+    </div>
+  </div>
+</header>
+
+<!-- ══ 1. cost scaling ═══════════════════════════════════════════════ -->
+<section class="reveal">
+  <div class="wrap">
+    <h2>The cost claim</h2>
+    <p class="lede">Central differences need <span class="stat">2n+1</span> pricings for
+      n parameters. A reverse sweep needs one forward pass and one backward pass,
+      whatever n is. Drag the basket size and watch which line bends.</p>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="ctl">
+          <label for="n">basket assets</label>
+          <input id="n" type="range" min="1" max="60" value="10" step="1">
+          <span class="val" id="nv">10</span>
+        </div>
+        <svg id="costchart" viewBox="0 0 640 300" role="img"
+             aria-label="Cost of adjoint differentiation versus bumped finite differences as input count grows"></svg>
+      </div>
+      <div class="card">
+        <div class="stat"><div class="k">inputs (n spots + K r &sigma; T)</div>
+          <div class="v" id="c-inputs">14</div></div>
+        <div class="stat"><div class="k">AAD, multiple of price</div>
+          <div class="v good" id="c-aad">2.0&times;</div></div>
+        <div class="stat"><div class="k">bumping, multiple of price</div>
+          <div class="v bad" id="c-bump">29&times;</div></div>
+        <div class="stat"><div class="k">AAD speedup</div>
+          <div class="v" id="c-speed">14.4&times;</div></div>
+        <p class="note" id="c-note"></p>
+      </div>
+    </div>
+    <p class="note">Points are <b>measured</b> at n = 1, 2, 5, 10, 25, 50 (40,000 paths,
+      Apple M-series, best of five). Wall-clock timings move about 10% between
+      runs, so the claim is the <em>shape</em> — flat against linear — not the
+      exact multiple. Beyond those the bumping line follows the
+      2n+1 model it has already been shown to obey; the AAD line is held at its
+      measured mean multiple. Hover any measured point for its timings.</p>
+  </div>
+</section>
+
+<!-- ══ 2. accuracy ═══════════════════════════════════════════════════ -->
+<section class="reveal">
+  <div class="wrap">
+    <h2>The accuracy claim</h2>
+    <p class="lede">A bumped derivative trades truncation error against
+      cancellation error, and the crossover moves with the problem. This chart is
+      computed live in your browser from a double-precision Black&ndash;Scholes —
+      drag the bump and watch the error find its floor and climb back out.</p>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="ctl">
+          <label for="h">bump h</label>
+          <input id="h" type="range" min="-12" max="1" value="-3" step="0.05">
+          <span class="val" id="hv">1e-3</span>
+        </div>
+        <svg id="errchart" viewBox="0 0 640 300" role="img"
+             aria-label="Relative error of central differences against bump size, with adjoint differentiation flat at machine precision"></svg>
+      </div>
+      <div class="card">
+        <div class="stat"><div class="k">analytic delta</div>
+          <div class="v" style="font-size:19px" id="a-exact">0.5987063256829237</div></div>
+        <div class="stat"><div class="k">central difference</div>
+          <div class="v" style="font-size:19px" id="a-fd">&mdash;</div></div>
+        <div class="stat"><div class="k">FD relative error</div>
+          <div class="v" id="a-fderr">&mdash;</div></div>
+        <div class="stat"><div class="k">AAD relative error</div>
+          <div class="v good">5.6e-16</div></div>
+      </div>
+    </div>
+    <p class="note">AAD does not appear on this axis as a curve because it has no
+      bump to tune. It differentiates the program rather than the function, so
+      neither error term exists.</p>
+  </div>
+</section>
+
+<!-- ══ 3. the failure ════════════════════════════════════════════════ -->
+<section class="reveal">
+  <div class="wrap">
+    <h2>Where it is simply wrong</h2>
+    <p class="lede">A cash-or-nothing digital pays 1 if the spot finishes above the
+      strike. The payoff is a step, its derivative is zero almost everywhere, and
+      the reverse sweep propagates that faithfully. No error, no NaN, no warning
+      &mdash; just a delta of zero.</p>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="ctl">
+          <label for="sm">smoothing width</label>
+          <input id="sm" type="range" min="0" max="3" value="0" step="0.05">
+          <span class="val" id="smv">0.00</span>
+          <button id="sharp" aria-pressed="true">sharp payoff</button>
+        </div>
+        <svg id="payoff" viewBox="0 0 640 300" role="img"
+             aria-label="Digital payoff and the derivative the adjoint sweep sees, as smoothing width increases"></svg>
+      </div>
+      <div class="card">
+        <div class="stat"><div class="k">true delta</div>
+          <div class="v">0.019333</div></div>
+        <div class="stat"><div class="k">pathwise AAD delta</div>
+          <div class="v" id="d-aad">0.000000</div></div>
+        <div class="stat"><div class="k">relative error</div>
+          <div class="v" id="d-err">100.0%</div></div>
+        <div class="warn">
+          <p class="note" style="margin:0" id="d-note">The payoff is flat everywhere
+          except one point of measure zero. Every path contributes a derivative of
+          0, so the sum is 0. This is the correct answer to the wrong question.</p>
+        </div>
+      </div>
+    </div>
+
+    <table style="margin-top:26px">
+      <thead><tr><th>method</th><th>delta</th><th>relative error</th></tr></thead>
+      <tbody>
+        <tr><td>pathwise AAD, sharp payoff</td><td class="num">0.000000</td><td class="num bad">100.0%</td></tr>
+        <tr><td>central difference, h = 0.5</td><td class="num">0.019317</td><td class="num good">0.1%</td></tr>
+        <tr><td>AAD, call-spread smoothing h = 2.0</td><td class="num">0.019325</td><td class="num good">0.0%</td></tr>
+        <tr><td>AAD, call-spread smoothing h = 1.0</td><td class="num">0.019341</td><td class="num good">0.0%</td></tr>
+        <tr><td>AAD, call-spread smoothing h = 0.25</td><td class="num">0.019356</td><td class="num good">0.1%</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Measured, 400,000 paths, common random numbers. The crude method
+      this repository argues against wins outright in this regime, which is why it
+      is on the page rather than in a footnote.</p>
+  </div>
+</section>
+
+<!-- ══ 4. greeks table ═══════════════════════════════════════════════ -->
+<section class="reveal">
+  <div class="wrap">
+    <h2>Against the oracle</h2>
+    <p class="lede">The analytic Greeks are the textbook formulas written by hand.
+      They share no code with the AD engine, which is the only reason agreement
+      means anything.</p>
+    <div class="card">
+      <table>
+        <thead><tr><th>greek</th><th>AAD</th><th>analytic</th><th>relative error</th></tr></thead>
+        <tbody id="gtbl"></tbody>
+      </table>
+    </div>
+    <p class="note">S = 100, K = 100, r = 3%, &sigma; = 20%, T = 1. The whole
+      closed form is 27 tape nodes. Second-order Greeks are deliberately absent:
+      a Hessian costs one reverse sweep per row, so the flat-cost property above
+      does not extend to them.</p>
+  </div>
+</section>
+
+<footer><div class="wrap">
+  <p><a href="https://github.com/asp53826/aad-greeks">github.com/asp53826/aad-greeks</a>
+     &nbsp;·&nbsp; MIT &nbsp;·&nbsp;
+     <a href="https://github.com/asp53826/aad-greeks/blob/main/DESIGN.md">design notes</a>
+     &nbsp;·&nbsp; <a href="https://github.com/asp53826">more systems</a></p>
+  <p>Charts in sections 1 and 4 plot measured benchmark output. Sections 2 and 3
+     compute live in the browser from the same double-precision formulas the test
+     suite checks against, so the curves are recomputed as you drag rather than
+     replayed.</p>
+</div></footer>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ── measured benchmark output ──────────────────────────────────────── */
+const COST = [
+  {n:1,  price:0.32, aad:0.73, bump:3.2, aadMult:2.309, bumpMult:9.96, speedup:4.31},
+  {n:2,  price:0.58, aad:1.36, bump:9.0, aadMult:2.355, bumpMult:15.57, speedup:6.61},
+  {n:5,  price:1.34, aad:2.78, bump:26.4, aadMult:2.072, bumpMult:19.64, speedup:9.48},
+  {n:10,  price:2.6, aad:5.02, bump:79.3, aadMult:1.934, bumpMult:30.54, speedup:15.79},
+  {n:25,  price:6.87, aad:11.71, bump:402.4, aadMult:1.706, bumpMult:58.61, speedup:34.35},
+  {n:50,  price:14.1, aad:29.65, bump:1453.2, aadMult:2.102, bumpMult:103.06, speedup:49.02},
+];
+const AAD_MULT = COST.reduce((a,c)=>a+c.aadMult,0)/COST.length; // measured mean
+const GREEKS = [
+  ["delta  dV/dS",      0.598706325682924,   0.5987063256829237],
+  ["vega   dV/dσ", 38.66681168028492,   38.66681168028493],
+  ["rho    dV/dr",      50.45722918443939,   50.457229184439356],
+  ["theta  -dV/dT",     5.380398043561674,   5.380398043561674],
+  ["dual   dV/dK",     -0.5045722918443939, -0.5045722918443936],
+];
+const P = {S:100, K:100, r:0.03, sigma:0.20, T:1.0};
+
+/* ── double-precision normal CDF (Hart / West) ──────────────────────────
+   An Abramowitz-Stegun style approximation is only good to ~1e-7, which
+   would swamp the 1e-10 cancellation floor this page exists to show. */
+function cnd(x){
+  const a = Math.abs(x);
+  if (a > 37) return x > 0 ? 1 : 0;
+  const e = Math.exp(-a*a/2);
+  let v;
+  if (a < 7.07106781186547){
+    v = 3.52624965998911e-02*a + 0.700383064443688;
+    v = v*a + 6.37396220353165;  v = v*a + 33.912866078383;
+    v = v*a + 112.079291497871;  v = v*a + 221.213596169931;
+    v = v*a + 220.206867912376;
+    let d = 8.83883476483184e-02*a + 1.75566716318264;
+    d = d*a + 16.064177579207;   d = d*a + 86.7807322029461;
+    d = d*a + 296.564248779674;  d = d*a + 637.333633378831;
+    d = d*a + 793.826512519948;  d = d*a + 440.413735824752;
+    v = e*v/d;
+  } else {
+    let d = a + 0.65;
+    d = a + 4/d; d = a + 3/d; d = a + 2/d; d = a + 1/d;
+    v = e/(d*2.506628274631);
+  }
+  return x > 0 ? 1-v : v;
+}
+const npdf = x => Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);
+
+function bsCall(S,K,r,sig,T){
+  const sT = Math.sqrt(T);
+  const d1 = (Math.log(S/K)+(r+0.5*sig*sig)*T)/(sig*sT);
+  return S*cnd(d1) - K*Math.exp(-r*T)*cnd(d1-sig*sT);
+}
+function bsDelta(S,K,r,sig,T){
+  const sT = Math.sqrt(T);
+  return cnd((Math.log(S/K)+(r+0.5*sig*sig)*T)/(sig*sT));
+}
+const EXACT_DELTA = bsDelta(P.S,P.K,P.r,P.sigma,P.T);
+
+/* ── tiny svg helper ────────────────────────────────────────────────── */
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, txt){
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (txt != null) n.textContent = txt;
+  return n;
+}
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+/* ══ 1. cost chart ═════════════════════════════════════════════════ */
+const CC = {w:640,h:300,l:52,r:16,t:18,b:38};
+function drawCost(nSel){
+  const s = $("#costchart"); s.textContent = "";
+  const {w,h,l,r,t,b} = CC;
+  const nMax = 60, yMax = 130;                       // multiples of one pricing
+  const X = n => l + (w-l-r)*(n-1)/(nMax-1);
+  const Y = v => h-b - (h-t-b)*Math.min(v,yMax)/yMax;
+
+  for (let g=0; g<=4; g++){
+    const v = yMax*g/4, y = Y(v);
+    s.appendChild(el("line",{x1:l,y1:y,x2:w-r,y2:y,stroke:css("--line"),
+                            "stroke-dasharray":"3 6"}));
+    s.appendChild(el("text",{x:l-9,y:y+4,"text-anchor":"end",fill:css("--muted"),
+                             "font-size":11,"font-family":css("--mono")}, v+"×"));
+  }
+  [1,10,20,30,40,50,60].forEach(n=>{
+    s.appendChild(el("text",{x:X(n),y:h-b+18,"text-anchor":"middle",fill:css("--muted"),
+                             "font-size":11,"font-family":css("--mono")}, n));
+  });
+
+  // bumping: 2n+1 pricings. Measured where we have it, model beyond.
+  let dB="", dA="";
+  for (let n=1;n<=nMax;n++){
+    dB += (n===1?"M":"L") + X(n) + " " + Y(2*(n+4)+1);   // n spots + K r sigma T
+    dA += (n===1?"M":"L") + X(n) + " " + Y(AAD_MULT);
+  }
+  const pB = el("path",{d:dB,fill:"none",stroke:css("--red"),"stroke-width":2.5});
+  const pA = el("path",{d:dA,fill:"none",stroke:css("--green"),"stroke-width":2.5});
+  s.appendChild(pB); s.appendChild(pA);
+  if (!RM){
+    [pB,pA].forEach((p,i)=>{
+      const len = p.getTotalLength ? p.getTotalLength() : 1200;
+      p.style.strokeDasharray = len; p.style.strokeDashoffset = len;
+      p.animate([{strokeDashoffset:len},{strokeDashoffset:0}],
+                {duration:900,delay:i*120,fill:"forwards",easing:"cubic-bezier(.2,.7,.3,1)"});
+    });
+  }
+
+  COST.forEach(c=>{
+    const g = el("g",{});
+    g.appendChild(el("circle",{cx:X(c.n),cy:Y(c.bumpMult),r:4,fill:css("--red")}));
+    g.appendChild(el("circle",{cx:X(c.n),cy:Y(c.aadMult),r:4,fill:css("--green")}));
+    const tip = el("title",{});
+    tip.textContent = `n=${c.n}  price ${c.price} ms  ·  AAD ${c.aad} ms `
+      + `(${c.aadMult.toFixed(2)}×)  ·  bump ${c.bump} ms `
+      + `(${c.bumpMult.toFixed(1)}×)`;
+    g.appendChild(tip);
+    s.appendChild(g);
+  });
+
+  s.appendChild(el("line",{x1:X(nSel),y1:t,x2:X(nSel),y2:h-b,stroke:css("--cyan"),
+                           "stroke-width":1.5,"stroke-dasharray":"4 4"}));
+  s.appendChild(el("text",{x:l+6,y:t+12,fill:css("--red"),"font-size":12,
+                           "font-family":css("--mono")},"central differences  2n+1"));
+  s.appendChild(el("text",{x:l+6,y:Y(AAD_MULT)-9,fill:css("--green"),"font-size":12,
+                           "font-family":css("--mono")},"adjoint  ≈ constant"));
+}
+function syncCost(){
+  const n = +$("#n").value, inputs = n+4;
+  const m = COST.find(c=>c.n===n);
+  // Where a measurement exists, show the measurement. Showing the model at a
+  // point that was actually timed would put a number on screen that disagrees
+  // with the README for no reason.
+  const aad  = m ? m.aadMult  : AAD_MULT;
+  const bump = m ? m.bumpMult : 2*inputs+1;
+  $("#nv").textContent = n;
+  $("#c-inputs").textContent = inputs;
+  $("#c-aad").textContent  = aad.toFixed(1)+"×";
+  $("#c-bump").textContent = bump.toFixed(bump<100?1:0)+"×";
+  $("#c-speed").textContent = (bump/aad).toFixed(1)+"×";
+  $("#c-note").textContent = m
+    ? `Measured at n=${n}: price ${m.price} ms, AAD ${m.aad} ms, bumping ${m.bump} ms `
+      + `— ${m.bumpMult.toFixed(1)}× the price against ${m.aadMult.toFixed(2)}×.`
+    : `Modelled — n=${n} was not timed. AAD held at its measured mean of `
+      + `${AAD_MULT.toFixed(2)}×, bumping at 2n+1 pricings, the relationship it `
+      + `was measured to obey. Drag to 1, 2, 5, 10, 25 or 50 for measured values.`;
+  drawCost(n);
+}
+
+/* ══ 2. error chart ════════════════════════════════════════════════ */
+function fdDelta(h){
+  return (bsCall(P.S+h,P.K,P.r,P.sigma,P.T) - bsCall(P.S-h,P.K,P.r,P.sigma,P.T))/(2*h);
+}
+function drawErr(hSel){
+  const s = $("#errchart"); s.textContent = "";
+  const {w,h,l,r,t,b} = CC;
+  const eLo=-17, eHi=0, xLo=-12, xHi=1;
+  const X = e => l + (w-l-r)*(e-xLo)/(xHi-xLo);
+  const Y = e => h-b - (h-t-b)*(e-eLo)/(eHi-eLo);
+
+  for (let e=eLo; e<=eHi; e+=4){
+    const y=Y(e);
+    s.appendChild(el("line",{x1:l,y1:y,x2:w-r,y2:y,stroke:css("--line"),
+                             "stroke-dasharray":"3 6"}));
+    s.appendChild(el("text",{x:l-9,y:y+4,"text-anchor":"end",fill:css("--muted"),
+                             "font-size":11,"font-family":css("--mono")},"1e"+e));
+  }
+  for (let e=xLo; e<=xHi; e+=2){
+    s.appendChild(el("text",{x:X(e),y:h-b+18,"text-anchor":"middle",fill:css("--muted"),
+                             "font-size":11,"font-family":css("--mono")},"1e"+e));
+  }
+
+  let d="";
+  for (let e=xLo; e<=xHi; e+=0.1){
+    const hh = Math.pow(10,e)*P.S;
+    const err = Math.max(Math.abs(fdDelta(hh)-EXACT_DELTA)/EXACT_DELTA, 1e-17);
+    d += (d?"L":"M") + X(e) + " " + Y(Math.log10(err));
+  }
+  const p = el("path",{d,fill:"none",stroke:css("--amber"),"stroke-width":2.5});
+  s.appendChild(p);
+  if (!RM && p.getTotalLength){
+    const L=p.getTotalLength(); p.style.strokeDasharray=L; p.style.strokeDashoffset=L;
+    p.animate([{strokeDashoffset:L},{strokeDashoffset:0}],
+              {duration:1000,fill:"forwards",easing:"ease-out"});
+  }
+
+  const yA = Y(Math.log10(5.6e-16));
+  s.appendChild(el("line",{x1:l,y1:yA,x2:w-r,y2:yA,stroke:css("--green"),
+                           "stroke-width":2.5}));
+  s.appendChild(el("text",{x:l+6,y:yA-8,fill:css("--green"),"font-size":12,
+                           "font-family":css("--mono")},"AAD  5.6e-16, no bump to tune"));
+  s.appendChild(el("text",{x:w-r-6,y:t+12,"text-anchor":"end",fill:css("--amber"),
+                           "font-size":12,"font-family":css("--mono")},
+                        "central differences"));
+
+  const eS = Math.log10(hSel/P.S);
+  const errS = Math.max(Math.abs(fdDelta(hSel)-EXACT_DELTA)/EXACT_DELTA,1e-17);
+  s.appendChild(el("line",{x1:X(eS),y1:t,x2:X(eS),y2:h-b,stroke:css("--cyan"),
+                           "stroke-width":1.5,"stroke-dasharray":"4 4"}));
+  s.appendChild(el("circle",{cx:X(eS),cy:Y(Math.log10(errS)),r:5,fill:css("--cyan")}));
+  s.appendChild(el("text",{x:l+6,y:h-b-8,fill:css("--muted"),"font-size":11,
+                           "font-family":css("--mono")},
+                        "← truncation error      cancellation error →"));
+}
+function syncErr(){
+  const e = +$("#h").value, hh = Math.pow(10,e)*P.S;
+  const fd = fdDelta(hh), err = Math.abs(fd-EXACT_DELTA)/EXACT_DELTA;
+  $("#hv").textContent = hh.toExponential(1);
+  $("#a-exact").textContent = EXACT_DELTA.toFixed(16);
+  $("#a-fd").textContent = fd.toFixed(16);
+  const n = $("#a-fderr");
+  n.textContent = err.toExponential(2);
+  n.className = "v " + (err < 1e-8 ? "good" : err < 1e-4 ? "mid" : "bad");
+  drawErr(hh);
+}
+
+/* ══ 3. digital payoff ═════════════════════════════════════════════ */
+function drawPayoff(sm){
+  const s = $("#payoff"); s.textContent = "";
+  const {w,h,l,r,t,b} = CC;
+  const lo=85, hi=115;
+  const X = v => l + (w-l-r)*(v-lo)/(hi-lo);
+  const Ytop = v => t + (h-t-b)*0.42*(1-v);
+  const yD = h-b-24;
+
+  s.appendChild(el("text",{x:l,y:t+2,fill:css("--muted"),"font-size":11.5,
+                           "font-family":css("--mono")},"payoff at expiry"));
+  s.appendChild(el("text",{x:l,y:yD-46,fill:css("--muted"),"font-size":11.5,
+                           "font-family":css("--mono")},
+                        "d(payoff)/dS  — what the reverse sweep sees"));
+
+  s.appendChild(el("line",{x1:X(100),y1:t,x2:X(100),y2:h-b,stroke:css("--line")}));
+  s.appendChild(el("text",{x:X(100),y:h-b+18,"text-anchor":"middle",fill:css("--muted"),
+                           "font-size":11,"font-family":css("--mono")},"K=100"));
+
+  let dP="", dD="";
+  const step = 0.05;
+  for (let v=lo; v<=hi; v+=step){
+    const pay = sm<=0 ? (v>100?1:0)
+      : Math.min(Math.max((v-(100-sm))/(2*sm),0),1);
+    dP += (dP?"L":"M") + X(v) + " " + Ytop(pay);
+    const der = sm<=0 ? 0 : (v>100-sm && v<100+sm ? 1 : 0);
+    dD += (dD?"L":"M") + X(v) + " " + (yD - der*34);
+  }
+  s.appendChild(el("path",{d:dP,fill:"none",stroke:css("--cyan"),"stroke-width":2.5}));
+  s.appendChild(el("path",{d:dD,fill:"none",
+                           stroke: sm<=0 ? css("--red") : css("--green"),
+                           "stroke-width":2.5}));
+  if (sm<=0){
+    s.appendChild(el("text",{x:X(107),y:yD-10,fill:css("--red"),"font-size":12.5,
+                             "font-family":css("--mono"),"font-weight":"700"},
+                          "identically zero"));
+  }
+}
+function digitalDelta(sm){
+  // true delta of the call spread that replaces the step, in closed form
+  if (sm<=0) return 0;
+  const {S,K,r,sigma,T}=P;
+  return (bsDelta(S,K-sm,r,sigma,T)-bsDelta(S,K+sm,r,sigma,T))/(2*sm);
+}
+const TRUE_DIGITAL = 0.019333;
+function syncPayoff(){
+  const sm = +$("#sm").value;
+  $("#smv").textContent = sm.toFixed(2);
+  $("#sharp").setAttribute("aria-pressed", String(sm<=0));
+  const d = digitalDelta(sm);
+  $("#d-aad").textContent = d.toFixed(6);
+  const err = Math.abs(d-TRUE_DIGITAL)/TRUE_DIGITAL;
+  const n=$("#d-err"); n.textContent=(err*100).toFixed(1)+"%";
+  n.className = "v " + (err<0.05?"good":err<0.5?"mid":"bad");
+  $("#d-aad").className = "v " + (sm<=0 ? "bad" : "good");
+  $("#d-note").textContent = sm<=0
+    ? "The payoff is flat everywhere except one point of measure zero. Every path "
+      + "contributes a derivative of 0, so the sum is 0. This is the correct answer "
+      + "to the wrong question."
+    : `The step is replaced by a call spread of width ${sm.toFixed(2)}, which is `
+      + "differentiable. The delta is recovered, at the cost of a small bias in the "
+      + "price itself — shrink the width too far and variance takes over.";
+  drawPayoff(sm);
+}
+
+/* ══ 4. greeks table ═══════════════════════════════════════════════ */
+(function(){
+  const tb = $("#gtbl");
+  for (const [name,aad,ana] of GREEKS){
+    const rel = Math.abs(aad-ana)/Math.abs(ana);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${name}</td><td class="num">${aad.toFixed(12)}</td>`
+      + `<td class="num">${ana.toFixed(12)}</td>`
+      + `<td class="num good">${rel===0?"0":rel.toExponential(1)}</td>`;
+    tb.appendChild(tr);
+  }
+})();
+
+/* ── wiring ─────────────────────────────────────────────────────────── */
+$("#n").addEventListener("input", syncCost);
+$("#h").addEventListener("input", syncErr);
+$("#sm").addEventListener("input", syncPayoff);
+$("#sharp").addEventListener("click", ()=>{
+  $("#sm").value = (+$("#sm").value<=0) ? 1 : 0;
+  syncPayoff();
+});
+syncCost(); syncErr(); syncPayoff();
+
+if (!RM && "IntersectionObserver" in window){
+  document.documentElement.classList.add("js");
+  const io = new IntersectionObserver(es=>es.forEach(e=>{
+    if (e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); }
+  }), {threshold:.12});
+  document.querySelectorAll(".reveal").forEach(n=>io.observe(n));
+  // belt and braces: if anything is still hidden shortly after load, show it
+  setTimeout(()=>document.querySelectorAll(".reveal:not(.in)").forEach(n=>{
+    if (n.getBoundingClientRect().top < innerHeight) n.classList.add("in");
+  }), 1200);
+}
+
+if (!RM){
+  const p = $("#tapepath");
+  if (p && p.getTotalLength){
+    const L = p.getTotalLength();
+    p.style.strokeDasharray = `${L*0.16} ${L}`;
+    p.animate([{strokeDashoffset:L},{strokeDashoffset:-L*0.16}],
+              {duration:6500,iterations:Infinity,easing:"linear"});
+  }
+}
+</script>
+</body>
+</html>

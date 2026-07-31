@@ -8,6 +8,11 @@ it silently returns the wrong answer.
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB?style=flat-square)
 ![runtime deps](https://img.shields.io/badge/runtime_dependencies-1-2ea44f?style=flat-square)
 
+**→ [Interactive results page](https://asp53826.github.io/aad-greeks/)** — drag the
+basket size, the bump width and the payoff smoothing and watch the numbers move.
+The accuracy and digital charts recompute live in the browser rather than
+replaying a recording.
+
 > A finite difference needs one revaluation per input. A reverse sweep produces
 > every partial derivative at a constant multiple of the forward cost, no matter
 > how many inputs there are. That claim is either true or it isn't, so this repo
@@ -51,16 +56,21 @@ plus K, r, sigma, T.
 
 | n assets | price (ms) | AAD (ms) | bump (ms) | AAD/price | bump/price | speedup |
 |---:|---:|---:|---:|---:|---:|---:|
-| 1 | 0.3 | 0.6 | 2.9 | **1.88** | 10.01 | 5.3× |
-| 2 | 0.6 | 1.0 | 7.4 | **1.74** | 13.29 | 7.6× |
-| 5 | 1.4 | 2.3 | 25.3 | **1.65** | 18.43 | 11.2× |
-| 10 | 2.6 | 5.4 | 77.2 | **2.03** | 29.19 | 14.4× |
-| 25 | 6.7 | 11.7 | 398.3 | **1.75** | 59.81 | 34.2× |
-| 50 | 13.1 | 27.6 | 1469.0 | **2.11** | 112.48 | **53.3×** |
+| 1 | 0.32 | 0.73 | 3.2 | **2.31** | 9.96 | 4.3× |
+| 2 | 0.58 | 1.36 | 9.0 | **2.36** | 15.57 | 6.6× |
+| 5 | 1.34 | 2.78 | 26.4 | **2.07** | 19.64 | 9.5× |
+| 10 | 2.60 | 5.02 | 79.3 | **1.93** | 30.54 | 15.8× |
+| 25 | 6.87 | 11.71 | 402.4 | **1.71** | 58.61 | 34.4× |
+| 50 | 14.10 | 29.65 | 1453.2 | **2.10** | 103.06 | **49.0×** |
 
-`AAD/price` is flat at roughly 1.7–2.1× across a 50× change in input count.
-`bump/price` grows linearly, exactly as `2n+1` predicts. That is the entire
-argument for adjoint methods, and it holds.
+`AAD/price` is flat at roughly 1.7–2.4× across a 50× change in input count.
+`bump/price` grows linearly, close to the `2n+1` its construction implies. That
+is the entire argument for adjoint methods, and it holds.
+
+Wall-clock timings move about 10% between runs on the same machine — an earlier
+run of this same benchmark gave 53.3× at n=50 rather than 49.0×. The result is
+the *shape*, flat against linear, not the third significant figure. Treat any
+single speedup number here as ±10%.
 
 ### The accuracy claim
 
