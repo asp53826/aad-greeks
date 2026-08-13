@@ -1,0 +1,85 @@
+# Claims this repository publishes, re-checked by Claim Auditor.
+#
+# Every entry binds a sentence in the README to the command that produces its
+# number. If the sentence is edited away, or the number stops reproducing, the
+# audit fails and opens one tracked issue.
+#
+# Scope note: the wall-clock tables in "The cost claim" are deliberately not
+# audited. They are ratios of timings on an Apple M-series machine, and the
+# README already says to treat any single speedup as ±10%. On a shared CI
+# runner the same benchmark measures AAD/price between 3.7 and 19.6 rather than
+# 1.7-2.4 — contention, not regression. Auditing them here would produce a
+# permanently red bot that everyone learns to ignore. What is audited below is
+# the set of claims that are machine-independent: correctness, structure, and
+# the failure case.
+
+[[claim]]
+id = "test-count"
+statement = "make test    # 19 tests, no network"
+command = "uv run pytest -q"
+pattern = "([0-9]+) passed"
+expected = 19
+tolerance = 0
+
+[[claim]]
+id = "aad-matches-analytic-delta"
+statement = "AAD        0.5987063256829240      relative error 5.6e-16"
+command = "uv run python bench/measure.py"
+pattern = "rel err ([0-9.e+-]+)"
+max = 1e-15
+
+[[claim]]
+id = "best-central-difference-error"
+statement = "| **1e-03** | **1.13e-10** ← best |"
+command = "uv run python bench/measure.py"
+pattern = "1\\.00e-03\\s+[0-9.]+\\s+([0-9.e+-]+)"
+expected = 1.13e-10
+tolerance_pct = 5
+
+[[claim]]
+id = "tape-nodes-fixed-by-program"
+statement = "Node count is fixed by the program; memory scales with paths × operations."
+command = "uv run python bench/measure.py"
+pattern = "500,000\\s+([0-9]+)\\s"
+expected = 24
+tolerance = 0
+
+[[claim]]
+id = "closed-form-tape-size"
+statement = "len(tape)          # 27 nodes for the whole closed form"
+command = "uv run python -c \"from aad.tape import grad; from aad.models import black_scholes_call; print('nodes', len(grad(black_scholes_call, dict(S=100.0, K=105.0, r=0.03, sigma=0.22, T=1.5))[2]))\""
+pattern = "nodes ([0-9]+)"
+expected = 27
+tolerance = 0
+
+[[claim]]
+id = "digital-true-delta"
+statement = "Cash-or-nothing digital call, true delta 0.019333"
+command = "uv run python bench/measure.py"
+pattern = "true delta = ([0-9.]+)"
+expected = 0.019333
+tolerance = 1e-6
+
+[[claim]]
+id = "pathwise-aad-returns-exactly-zero"
+statement = "| **pathwise AAD, sharp payoff** | **0.000000** | **100.0%** |"
+command = "uv run python bench/measure.py"
+pattern = "pathwise AAD, sharp payoff\\s+([0-9.]+)"
+expected = 0.0
+tolerance = 1e-9
+
+[[claim]]
+id = "central-difference-beats-aad-on-the-digital"
+statement = "| central difference, h=0.5 | 0.019317 | 0.1% |"
+command = "uv run python bench/measure.py"
+pattern = "central difference, h=0\\.5\\s+([0-9.]+)"
+expected = 0.019317
+tolerance = 5e-6
+
+[[claim]]
+id = "call-spread-smoothing-recovers-the-delta"
+statement = "| AAD, call-spread smoothing h=1.0 | 0.019341 | 0.0% |"
+command = "uv run python bench/measure.py"
+pattern = "call-spread smoothing h=1\\.0\\s+([0-9.]+)"
+expected = 0.019341
+tolerance = 5e-6
