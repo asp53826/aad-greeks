@@ -155,6 +155,12 @@ make test    # 19 tests, no network
 make bench   # ~11s, prints every table above
 ```
 
+The numbers above are not on the honour system. [`claims.toml`](claims.toml)
+binds nine of them to the commands that produce them, and Claim Auditor re-runs
+those commands weekly — if a sentence here stops reproducing, it opens an issue.
+The wall-clock ratios are deliberately excluded: they are machine-dependent, and
+the manifest says why.
+
 ## Use it
 
 ```python
