@@ -143,6 +143,45 @@ through a copy is still a live key.
    audited above. Depth in one project reads better than breadth across
    thirty.
 
+## 6. Outcome: `errorbar`, built from scratch
+
+Rather than import anything, the strongest concept in the audited set — Forge's
+"benchmark ML libraries and compare performance" — was rebuilt as an original
+implementation. Ideas are not copyrightable; implementations are. Writing one
+from scratch means the copyright is held outright, with no notice to preserve
+and no history inherited.
+
+The design premise came directly from §2's first defect. EchoBench's headline
+was a mock measured against the harness that scripts it, which is a measurement
+that cannot fail. So the project became the inverse: a harness whose whole
+purpose is refusing to report a difference the data does not support.
+
+```
+src/errorbar/   1,306 LOC   stats, timer, compare, runner, environment, report, cli
+tests/            809 LOC   101 tests, ruff clean, zero runtime dependencies
+```
+
+A difference must clear three gates before it is called one: at least 20
+samples per side, a Mann-Whitney U p-value under alpha, and a bootstrap
+interval on the ratio that clears a 3% effect threshold in full rather than at
+the point estimate. Statistics are matched to the shape of timing data — median
+over mean, percentile bootstrap over `mean ± stdev`, rank test over t-test.
+
+The part that answers §2 directly is how it is tested. The claim "does not
+report differences that are not there" is measured rather than asserted: 200
+comparisons of two samples drawn from the *same* distribution, where the
+correct answer is known in advance and every non-inconclusive verdict is a
+false positive. The same run with the effect gate removed shows errors becoming
+materially more common, which isolates that gate's contribution instead of
+assuming it. Power is checked in the other direction, against a real 20%
+regression that must be caught 95% of the time.
+
+The README's sample output is a real run of `examples/sorting.py`, not a
+mock-up. In that run the tool declined to call one of four comparisons — a
+target doing byte-identical work to the baseline that measured 2.1% apart. That
+gap is the machine, not the code, and printing it as a win is the failure this
+whole exercise was about.
+
 ## Sources
 
 - MIT License text, as distributed in `EchoBench/LICENSE`
