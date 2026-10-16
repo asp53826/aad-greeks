@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Short Gamma</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="An options-desk game. Every Greek on screen comes off the aad-greeks reverse-mode tape, and one of them is wrong.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<style>
+/* Layout: a risk terminal. Market on the left, the book and its controls on the
+   right, the tape that produced every number running underneath. One look,
+   night-desk dark, in the palette of the aad-greeks results page. */
+:root{
+  --bg:#050814; --panel:#0a1020; --panel2:#0e1830; --line:#1d2e4a; --line2:#2a4166;
+  --text:#eef4ff; --muted:#8da2bf; --dim:#5d7194;
+  --spot:#ffcb66;    /* the market: spot and prices */
+  --adj:#4de7ff;     /* adjoints: everything the reverse sweep produces */
+  --ghost:#a98bff;   /* other players */
+  --up:#68f5ae; --down:#ff647c;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --sans:"IBM Plex Sans",ui-sans-serif,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:10px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{background:var(--bg);color:var(--text)}
+body{margin:0;font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:0 32px}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
+button,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--adj);outline-offset:2px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .down{color:var(--down)} .muted{color:var(--muted)} .dim{color:var(--dim)}
+kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--muted)}
+
+/* ── top bar ─────────────────────────────────────────────────────────── */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 92%,transparent);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);margin-inline:calc(-1*max(16px,env(safe-area-inset-left,0px)));
+  padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px}
+.brand{font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:-.02em;line-height:1;white-space:nowrap}
+.brand b{color:var(--adj);font-weight:800}
+.chip{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  border:1px solid var(--line2);border-radius:999px;padding:3px 9px;white-space:nowrap}
+.chip.live{color:var(--up);border-color:color-mix(in srgb,var(--up) 40%,var(--line2))}
+.ticker{display:flex;flex-wrap:wrap;gap:4px 20px;align-items:baseline}
+.tk{display:flex;flex-direction:column;line-height:1.15}
+.tk span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.tk strong{font-family:var(--mono);font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.tk.big strong{font-size:22px}
+.transport{margin-left:auto;display:flex;gap:6px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
+.seg button{background:transparent;border:0;padding:6px 10px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--panel2);color:var(--text)}
+.btn{background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:7px 12px;font-family:var(--mono);font-size:12.5px;
+  transition:border-color .15s,background .15s}
+.btn:hover{border-color:var(--adj)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.primary{background:var(--adj);color:#03121a;border-color:var(--adj);font-weight:700}
+.btn.primary:hover{filter:brightness(1.1)}
+.btn.sell{border-color:color-mix(in srgb,var(--down) 45%,var(--line2))}
+.btn.buy{border-color:color-mix(in srgb,var(--up) 45%,var(--line2))}
+
+/* ── desk grid ───────────────────────────────────────────────────────── */
+.desk{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:14px;margin-top:14px;align-items:start}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;min-width:0}
+.card h2{margin:0 0 10px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card h2 .r{margin-left:auto;letter-spacing:.04em;text-transform:none;font-weight:400}
+canvas{display:block;width:100%}
+#spotCv{height:260px} #pnlCv{height:110px;margin-top:6px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:5px}
+
+/* book */
+table{border-collapse:collapse;width:100%}
+.tbl{overflow-x:auto}
+.tbl th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:400;text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl td:first-child{white-space:normal}
+.tbl td{padding:6px;text-align:right;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl tr.sel td{background:color-mix(in srgb,var(--adj) 7%,transparent)}
+.tbl tr{cursor:pointer}
+.how{display:block;font-size:10px;color:var(--dim);letter-spacing:.02em}
+.how.warn{color:var(--spot)}
+.greeks{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+.g{background:var(--panel2);border-radius:8px;padding:8px 10px;min-width:0}
+.g span{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.g strong{font-family:var(--mono);font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.digi{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line2);font-size:12.5px}
+.digi .lbl{color:var(--muted)}
+select{background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:5px 8px;font-family:var(--mono);font-size:12px}
+
+/* hedge */
+.delta{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.delta strong{font-family:var(--display);font-weight:800;font-size:38px;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
+.gauge{position:relative;height:8px;border-radius:4px;background:var(--panel2);margin:10px 0 12px;overflow:hidden}
+.gauge::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--line2)}
+.gauge i{position:absolute;top:0;bottom:0;border-radius:4px;transition:left .25s,width .25s,background .25s}
+.hedgebtns{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.hedgebtns .btn{padding:9px 4px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:12.5px}
+.row .sp{margin-left:auto}
+
+/* rfq */
+#rfq{border-color:var(--line)}
+#rfq.hot{border-color:var(--spot);box-shadow:0 0 0 1px color-mix(in srgb,var(--spot) 30%,transparent),0 0 28px -8px color-mix(in srgb,var(--spot) 55%,transparent)}
+.ask{font-family:var(--display);font-weight:600;font-size:21px;line-height:1.2;text-wrap:balance}
+.ask em{font-style:normal;color:var(--spot)}
+.quotes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.quotes .btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:9px 10px}
+.quotes .btn small{color:var(--muted);font-size:11px}
+.timer{height:3px;background:var(--panel2);border-radius:2px;margin-top:12px;overflow:hidden}
+.timer i{display:block;height:100%;background:var(--spot);transition:width .3s linear}
+
+/* tape */
+.tapewrap{overflow-x:auto;border-radius:8px;background:radial-gradient(ellipse at 70% 0%,color-mix(in srgb,var(--adj) 6%,transparent),transparent 70%),var(--panel2)}
+#tapeSvg{display:block;min-width:620px;width:100%;height:auto}
+#tapeSvg .edge{fill:none;stroke:var(--line2);stroke-width:1.2;transition:stroke .12s,opacity .12s}
+#tapeSvg .edge.lit{stroke:var(--adj);opacity:.85}
+#tapeSvg .edge.dead{stroke:var(--down);stroke-dasharray:4 3;opacity:.9}
+#tapeSvg .node circle{fill:var(--panel);stroke:var(--line2);stroke-width:1.3;transition:fill .12s,stroke .12s}
+#tapeSvg .node.vec circle.outer{fill:none;stroke:var(--line2);stroke-width:1}
+#tapeSvg .node text{font-family:var(--mono);font-size:10px;fill:var(--muted);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+#tapeSvg .node.lit circle{stroke:var(--adj)}
+#tapeSvg .node.lit text{fill:var(--text)}
+#tapeSvg .node.zero circle{stroke:var(--down)}
+#tapeSvg .node.zero text{fill:var(--down)}
+#tapeSvg .lab{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
+#tapeSvg .lab.g{fill:var(--adj)}
+#tapeSvg .lab.z{fill:var(--down)}
+.tapebar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.pill{font-family:var(--mono);font-size:11.5px;border:1px solid var(--line2);background:transparent;border-radius:999px;padding:4px 10px;color:var(--muted)}
+.pill[aria-pressed="true"]{color:var(--text);border-color:var(--adj)}
+.counters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
+.counters div{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.counters strong{display:block;font-size:15px;letter-spacing:0;color:var(--text);font-variant-numeric:tabular-nums}
+.counters .c strong{color:var(--adj)}
+.note{color:var(--muted);font-size:12.5px;margin:10px 0 0;max-width:72ch}
+
+/* feed + board */
+.feed{list-style:none;margin:0;padding:0;max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.feed li{font-size:12.5px;display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px}
+.feed li time{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.feed li.ev{color:var(--spot)} .feed li.good{color:var(--up)} .feed li.bad{color:var(--down)} .feed li.win{color:var(--adj)}
+.peers{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.peer{display:grid;grid-template-columns:8px minmax(0,1fr) auto auto;gap:8px;align-items:center;font-size:12.5px}
+.peer i{width:8px;height:8px;border-radius:50%;background:var(--ghost)}
+.peer.me i{background:var(--adj)}
+.lb td .btn{padding:3px 8px;font-size:11px}
+.lb td:nth-child(2){text-align:left;white-space:normal}
+.lb tr.bot td{color:var(--muted)}
+.lb tr.me td{color:var(--adj)}
+.badge{font-family:var(--mono);font-size:10px;color:var(--up)}
+.empty{color:var(--muted);font-size:12.5px;padding:8px 0}
+
+/* overlays */
+.ov{position:fixed;inset:0;z-index:40;background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(6px);
+  overflow-y:auto;padding:calc(24px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.sheet{max-width:880px;margin:0 auto;background:var(--panel);border:1px solid var(--line2);border-radius:14px;padding:clamp(18px,4vw,34px);
+  box-shadow:0 30px 80px -30px #000}
+.kicker{font-family:var(--mono);font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--adj)}
+.wordmark{font-family:var(--display);font-weight:800;font-size:clamp(46px,10vw,104px);line-height:.88;letter-spacing:-.045em;margin:10px 0 16px;text-wrap:balance}
+.wordmark span{display:block;color:transparent;-webkit-text-stroke:1.5px var(--adj)}
+.lede{font-size:16.5px;max-width:62ch;color:var(--text);margin:0 0 10px}
+.lede.m{color:var(--muted);font-size:14.5px}
+.brief{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:20px 0}
+.brief div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel2)}
+.brief strong{display:block;font-family:var(--mono);font-size:15px}
+.brief span{font-size:12px;color:var(--muted)}
+.cta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:18px 0 6px}
+.cta .btn{padding:11px 18px;font-size:13.5px}
+.keys{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted);margin-top:14px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:22px}
+.two h3,.sheet h3{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:600}
+.final{font-family:var(--display);font-weight:800;font-size:clamp(48px,9vw,88px);letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums}
+.bars{display:flex;flex-direction:column;gap:6px}
+.bar{display:grid;grid-template-columns:118px minmax(0,1fr) 92px;gap:8px;align-items:center;font-size:12.5px}
+.bar .t{position:relative;height:12px;background:var(--panel2);border-radius:3px}
+.bar .t::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--line2)}
+.bar .t i{position:absolute;top:0;bottom:0;border-radius:3px}
+.bar .t.vb{background:none}.bar .t.vb::before{display:none}
+.bar .v{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.ach{display:flex;flex-wrap:wrap;gap:8px}
+.ach span{font-family:var(--mono);font-size:11.5px;border:1px solid var(--line2);border-radius:999px;padding:4px 10px;color:var(--dim)}
+.ach span.on{color:var(--adj);border-color:var(--adj)}
+.lesson{border-left:3px solid var(--spot);padding:4px 0 4px 14px;margin:18px 0;font-size:14.5px;max-width:70ch}
+.lesson strong{color:var(--spot)}
+.toast{position:fixed;z-index:50;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  background:var(--panel2);border:1px solid var(--adj);border-radius:10px;padding:10px 14px;font-size:13px;max-width:320px;
+  box-shadow:0 10px 30px -10px #000;transition:opacity .3s,transform .3s}
+.toast[hidden]{display:block!important;opacity:0;transform:translateY(8px);pointer-events:none}
+.toast b{color:var(--adj);font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;display:block}
+#bumpOut{margin-top:10px}
+
+@media (max-width:980px){
+  .desk{display:flex;flex-direction:column;align-items:stretch}
+  .col{display:contents}
+  #market{order:1} #rfq{order:2} #hedge{order:3} #book{order:4} #tape{order:5} #feed{order:6} #board{order:7}
+  .transport{margin-left:0}
+}
+@media (max-width:620px){
+  .brief,.greeks,.counters{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .two{grid-template-columns:minmax(0,1fr)}
+  #spotCv{height:210px}
+  .hedgebtns{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .hedgebtns .flat{grid-column:1/-1;order:-1}
+  .bar{grid-template-columns:92px minmax(0,1fr) 80px}
+  #book .tbl th:nth-child(5),#book .tbl td:nth-child(5){display:none}
+  .delta strong{font-size:32px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">SHORT <b>Γ</b>AMMA</div>
+  <span class="chip" id="modeChip">Today's market</span>
+  <div class="ticker">
+    <div class="tk"><span>Clock</span><strong id="tClock">D1 09:30</strong></div>
+    <div class="tk"><span>Spot</span><strong id="tSpot" style="color:var(--spot)">100.00</strong></div>
+    <div class="tk"><span>Implied vol</span><strong id="tIv">0.0%</strong></div>
+    <div class="tk"><span>Realized so far</span><strong id="tRv">n/a</strong></div>
+    <div class="tk big"><span>P&amp;L</span><strong id="tPnl">$0</strong></div>
+    <div class="tk" id="tGhostBox" hidden><span>vs ghost</span><strong id="tGhost">$0</strong></div>
+  </div>
+  <div class="transport">
+    <button class="btn" id="playBtn" aria-label="Pause or resume">▶ Run</button>
+    <div class="seg" role="group" aria-label="Speed">
+      <button data-speed="1" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="4" aria-pressed="false">4×</button>
+    </div>
+  </div>
+</header>
+
+<main class="desk">
+<div class="col">
+  <section class="card" id="market">
+    <h2>Market <span class="r dim" id="regimeHint">10 trading days · half-hour bars</span></h2>
+    <canvas id="spotCv" aria-label="Spot price chart"></canvas>
+    <canvas id="pnlCv" aria-label="Profit and loss chart"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--spot)"></i>spot</span>
+      <span><i style="background:var(--adj)"></i>your P&amp;L</span>
+      <span id="lgGhost" hidden><i style="background:var(--ghost)"></i>ghost P&amp;L</span>
+      <span><i style="background:var(--line2)"></i>strikes on your book</span>
+    </div>
+  </section>
+
+  <section class="card" id="tape">
+    <h2>The tape <span class="r dim" id="tapeCaption">one reverse sweep per position per tick</span></h2>
+    <div class="tapebar" id="tapePick"></div>
+    <div class="tapewrap"><svg id="tapeSvg" role="img" aria-label="Computation graph of the selected position, with adjoints flowing backwards"></svg></div>
+    <div class="counters">
+      <div>Nodes on this tape<strong id="cNodes">0</strong></div>
+      <div class="c">Reverse sweeps so far<strong id="cSweeps">0</strong></div>
+      <div class="c">Greeks produced<strong id="cGreeks">0</strong></div>
+      <div>Same Greeks by bumping<strong id="cBump">0</strong></div>
+    </div>
+    <p class="note" id="tapeNote">Forward pass left to right records every operation. The reverse sweep runs right to left and leaves ∂V/∂input on each input. That is five Greeks for the cost of about two pricings.</p>
+  </section>
+  <section class="card" id="feed">
+    <h2>Wire</h2>
+    <ul class="feed" id="feedList"></ul>
+  </section>
+</div>
+<div class="col">
+  <section class="card" id="rfq">
+    <h2>Client desk <span class="r dim" id="rfqCount"></span></h2>
+    <div id="rfqBody"><p class="empty">No client is asking right now. Requests for quotes land here; you have three bars to answer.</p></div>
+  </section>
+
+  <section class="card" id="book">
+    <h2>Your book <span class="r"><button class="btn" id="bumpBtn" title="Re-price with central differences: 11 pricings per position">Bump-check the screen</button></span></h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Position</th><th>Qty</th><th>Value</th><th>Δ shares</th><th>Vega $/pt</th></tr></thead>
+      <tbody id="bookRows"></tbody>
+    </table></div>
+    <div id="bumpOut"></div>
+    <div class="digi">
+      <span class="lbl">Digital delta from</span>
+      <div class="seg" role="group" aria-label="Digital delta method">
+        <button id="dgSharp" aria-pressed="true">pathwise payoff</button><button id="dgSmooth" aria-pressed="false">call-spread smoothing</button>
+      </div>
+      <label class="lbl" for="dgH">width h</label>
+      <select id="dgH"><option value="2">2.00</option><option value="1" selected>1.00</option><option value="0.5">0.50</option><option value="0.25">0.25</option></select>
+    </div>
+    <div class="greeks">
+      <div class="g"><span>Γ sh / $1</span><strong id="gGamma">0</strong></div>
+      <div class="g"><span>Vega $/pt</span><strong id="gVega">0</strong></div>
+      <div class="g"><span>Θ $/day</span><strong id="gTheta">0</strong></div>
+      <div class="g"><span>Book value</span><strong id="gValue">0</strong></div>
+    </div>
+  </section>
+
+  <section class="card" id="hedge">
+    <h2>Hedge <span class="r dim">stock, $0.01 half-spread + impact</span></h2>
+    <div class="delta"><strong id="hDelta">0</strong><span class="muted" id="hDeltaTxt">shares of net delta</span></div>
+    <div class="gauge" aria-hidden="true"><i id="hGauge"></i></div>
+    <div class="hedgebtns">
+      <button class="btn sell" data-q="-1000">−1k</button>
+      <button class="btn sell" data-q="-100">−100</button>
+      <button class="btn primary flat" id="flatBtn">Flatten <kbd>F</kbd></button>
+      <button class="btn buy" data-q="100">+100</button>
+      <button class="btn buy" data-q="1000">+1k</button>
+    </div>
+    <div class="row">
+      <label for="autoSel" class="muted">Auto-hedge when |Δ| exceeds</label>
+      <select id="autoSel"><option value="0">off</option><option value="2000">2,000</option><option value="1000">1,000</option><option value="500">500</option></select>
+      <span class="sp muted">Stock <span class="num" id="hShares">0</span> · costs <span class="num" id="hCost">$0</span></span>
+    </div>
+  </section>
+
+
+
+  <section class="card" id="board">
+    <h2>Today's board <span class="r dim" id="boardSub">replayed, not trusted</span></h2>
+    <div class="peers" id="peers" hidden></div>
+    <div class="tbl lb"><table><tbody id="boardRows"><tr><td class="empty">Loading…</td></tr></tbody></table></div>
+  </section>
+</div>
+</main>
+
+<div class="ov" id="startOv">
+  <div class="sheet">
+    <div class="kicker">An options desk on the aad-greeks engine</div>
+    <h1 class="wordmark">Short<span>Gamma</span></h1>
+    <p class="lede">You inherit a book that is short volatility: 40 at-the-money straddles, 25 downside puts and a $25,000 digital. You have ten trading days to the close. Hedge it, quote the clients who call in, and survive the news.</p>
+    <p class="lede m">Every Greek on your screen comes off a reverse-mode tape, the same engine as this repo, checked against it to 1e-12 in CI. One of the numbers on the screen is wrong anyway. Finding it is part of the game.</p>
+    <div class="brief">
+      <div><strong>−40 × 100C / 100P</strong><span>expire at the day-10 close</span></div>
+      <div><strong>−25 × 95P</strong><span>30 days, marked at the close</span></div>
+      <div><strong>−$25k digital</strong><span>pays if spot &gt; 104 at the close</span></div>
+      <div><strong>~8 clients</strong><span>some of them know something</span></div>
+    </div>
+    <div class="cta">
+      <button class="btn primary" id="startDaily">Trade today's market</button>
+      <button class="btn" id="startPractice">Practice on a random market</button>
+      <span class="muted" id="startNote">Everyone gets the same market today. Scores are re-simulated from your trades before they rank.</span>
+    </div>
+    <div class="keys"><span><kbd>Space</kbd> run / pause</span><span><kbd>F</kbd> flatten delta</span><span><kbd>B</kbd>/<kbd>S</kbd> buy / sell 100 (<kbd>Shift</kbd> 1,000)</span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> quote tight / wide / pass</span><span><kbd>D</kbd> digital method</span></div>
+    <div class="two">
+      <div><h3>On the desk now</h3><div id="startPeers" class="empty">Nobody else yet.</div></div>
+      <div><h3>Today's leaders</h3><div id="startBoard" class="empty">No runs posted yet today.</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="ov" id="endOv" hidden>
+  <div class="sheet" id="endSheet"></div>
+</div>
+
+<div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
+
+<script type="module" src="./game.js"></script>
+</body>
+</html>
