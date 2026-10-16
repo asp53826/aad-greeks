@@ -20,3 +20,19 @@ jobs:
       - run: uv sync --all-extras --dev
       # fully mocked; CI never touches sec.gov
       - run: uv run pytest -q
+
+  game:
+    # docs/play runs a JavaScript port of the engine; this keeps it honest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: uv sync --dev
+      - name: golden values are current with src/aad
+        run: uv run python tests/js/make_golden.py --check
+      - run: node --test tests/js/*.test.mjs

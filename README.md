@@ -13,6 +13,17 @@ basket size, the bump width and the payoff smoothing and watch the numbers move.
 The accuracy and digital charts recompute live in the browser rather than
 replaying a recording.
 
+**→ [Short Gamma](https://asp53826.github.io/aad-greeks/play/)**, a trading-desk
+game built on this engine. You inherit a short-volatility book (straddles, puts
+and a $25,000 digital), hedge it for ten simulated days and quote clients, some
+of whom know where vol is going. Every Greek on the risk screen comes off a
+reverse-mode tape. That tape is a JavaScript port of `src/aad`, checked in CI
+against the Python package to `1e-12` with identical node counts. Its
+digital delta reads exactly zero, as in [Where it loses](#where-it-loses), and
+noticing that is part of the game. Everyone gets the same market each day. A
+run is just a seed plus a trade log, so the board re-simulates every score
+rather than trusting it.
+
 > A finite difference needs one revaluation per input. A reverse sweep produces
 > every partial derivative at a constant multiple of the forward cost, no matter
 > how many inputs there are. That claim is either true or it isn't, so this repo
@@ -153,6 +164,7 @@ The rest of the honest ledger:
 ```bash
 make test    # 19 tests, no network
 make bench   # ~11s, prints every table above
+make game-check   # the game's JS engine against the Python one (needs node)
 ```
 
 The numbers above are not on the honour system. [`claims.toml`](claims.toml)
