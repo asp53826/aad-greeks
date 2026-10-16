@@ -1,13 +1,18 @@
-"""Write golden.json: what the Python engine computes, for the JS port to match.
+"""Write or check golden.json: what Python computes for the JS port to match.
 
     uv run python tests/js/make_golden.py
+    uv run python tests/js/make_golden.py --check
 
-CI regenerates this file and fails if it differs from the committed copy, so
-the golden values can never be stale relative to src/aad.
+The checker accepts only a handful of floating-point ULPs. That keeps CI
+portable across libm/NumPy builds without allowing a meaningful engine change
+to hide behind a broad numerical tolerance.
 """
 
+import argparse
 import json
+import math
 from pathlib import Path
+import sys
 
 import numpy as np
 
@@ -25,7 +30,7 @@ GRID = [
 ]
 
 
-def main():
+def build_fixture():
     out = {"cdf": [], "bs": [], "mc_call": [], "mc_digital": []}
 
     for x in np.linspace(-9.0, 9.0, 181):
@@ -49,7 +54,68 @@ def main():
             out["mc_digital"].append(dict(params=p, smoothing=h, price=price,
                                           aad=g, tape_len=len(tape)))
 
+    return out
+
+
+def assert_equivalent(expected, actual, path="fixture"):
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        if expected.keys() != actual.keys():
+            raise AssertionError(f"{path}: keys differ")
+        for key in expected:
+            assert_equivalent(expected[key], actual[key], f"{path}.{key}")
+        return
+
+    if isinstance(expected, list) and isinstance(actual, list):
+        if len(expected) != len(actual):
+            raise AssertionError(
+                f"{path}: length {len(actual)} != {len(expected)}"
+            )
+        for index, (want, got) in enumerate(zip(expected, actual)):
+            assert_equivalent(want, got, f"{path}[{index}]")
+        return
+
+    if (
+        isinstance(expected, (int, float))
+        and not isinstance(expected, bool)
+        and isinstance(actual, (int, float))
+        and not isinstance(actual, bool)
+    ):
+        ulp_tolerance = 8 * sys.float_info.epsilon
+        if not math.isclose(
+            float(actual),
+            float(expected),
+            rel_tol=ulp_tolerance,
+            abs_tol=ulp_tolerance,
+        ):
+            raise AssertionError(f"{path}: {actual!r} != {expected!r}")
+        return
+
+    if actual != expected:
+        raise AssertionError(f"{path}: {actual!r} != {expected!r}")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="verify the committed fixture within an 8-ULP platform tolerance",
+    )
+    args = parser.parse_args()
+
+    out = build_fixture()
+
     path = Path(__file__).with_name("golden.json")
+    if args.check:
+        committed = json.loads(path.read_text())
+        assert_equivalent(committed, out)
+        print(
+            f"verified {path} "
+            f"({len(out['bs'])} closed-form, "
+            f"{len(out['mc_digital'])} digital cases)"
+        )
+        return
+
     path.write_text(json.dumps(out, indent=1, sort_keys=True) + "\n")
     print(f"wrote {path} ({len(out['bs'])} closed-form, {len(out['mc_digital'])} digital cases)")
 

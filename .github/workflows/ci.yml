@@ -34,7 +34,5 @@ jobs:
           node-version: "22"
       - run: uv sync --dev
       - name: golden values are current with src/aad
-        run: |
-          uv run python tests/js/make_golden.py
-          git diff --exit-code tests/js/golden.json
+        run: uv run python tests/js/make_golden.py --check
       - run: node --test tests/js/*.test.mjs

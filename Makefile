@@ -7,7 +7,7 @@ bench:
 	uv run python bench/measure.py
 
 game-check:
-	uv run python tests/js/make_golden.py
+	uv run python tests/js/make_golden.py --check
 	node --test tests/js/*.test.mjs
 
 play:
