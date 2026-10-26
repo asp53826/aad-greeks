@@ -1,0 +1,59 @@
+name: Achievements
+
+# Manual only. Drives tools/achievements/unlock.py against a sandbox repo
+# using the ACHIEVEMENTS_TOKEN secret (a PAT, so the activity is credited to
+# you rather than to github-actions). See tools/achievements/README.md.
+on:
+  workflow_dispatch:
+    inputs:
+      achievement:
+        type: choice
+        options: [pull-shark, pair-extraordinaire, quickdraw, yolo]
+        default: pull-shark
+      repo:
+        description: Sandbox repo (owner/name), never this one
+        required: true
+      count:
+        description: PRs to merge (pull-shark 2/16/128/1024, pair 1/10/24/48)
+        default: "16"
+      coauthor-name:
+        description: pair-extraordinaire only
+        default: ""
+      coauthor-email:
+        description: pair-extraordinaire only; verified on the co-author's account
+        default: ""
+      reviewer:
+        description: yolo only; a collaborator on the sandbox
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: achievements
+  cancel-in-progress: false
+
+jobs:
+  unlock:
+    runs-on: ubuntu-latest
+    # GitHub stops jobs at 6h; at the default pace that is ~600 PRs per run
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - env:
+          ACHIEVEMENTS_TOKEN: ${{ secrets.ACHIEVEMENTS_TOKEN }}
+          ACHIEVEMENT: ${{ inputs.achievement }}
+          REPO: ${{ inputs.repo }}
+          COUNT: ${{ inputs.count }}
+          COAUTHOR_NAME: ${{ inputs.coauthor-name }}
+          COAUTHOR_EMAIL: ${{ inputs.coauthor-email }}
+          REVIEWER: ${{ inputs.reviewer }}
+        run: |
+          args=("$ACHIEVEMENT" --repo "$REPO" --count "$COUNT")
+          [ -n "$COAUTHOR_NAME" ] && args+=(--coauthor-name "$COAUTHOR_NAME")
+          [ -n "$COAUTHOR_EMAIL" ] && args+=(--coauthor-email "$COAUTHOR_EMAIL")
+          [ -n "$REVIEWER" ] && args+=(--reviewer "$REVIEWER")
+          python tools/achievements/unlock.py "${args[@]}"
